@@ -1,0 +1,9 @@
+profile.cpuprofile
+node_modules
+pokeapi
+*.pid
+*.lock
+npm-debug.log
+dist
+.gulp-cache
+src/localConfig.js
