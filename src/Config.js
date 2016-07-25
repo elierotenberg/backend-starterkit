@@ -3,9 +3,22 @@ import cluster from 'cluster';
 import fs from 'fs';
 import os from 'os';
 import parseArgs from 'minimist';
+import t from 'tcomb-validation';
+import pkg from '../package.json';
 
 // by default leave 2 CPUs free (assuming HAProxy & Varnish)
 const CPUS_LEFT_FREE = 2;
+
+const RequiredConfigType = t.struct({
+  pg: t.struct({
+    database: t.String,
+    user: t.String,
+    password: t.String,
+  }),
+  security: t.struct({
+    appAdminPassword: t.String,
+  }),
+}, 'RequiredConfigType');
 
 const defaultConfig = {
   http: {
@@ -21,6 +34,8 @@ const defaultConfig = {
     logErrors: true,
   },
   security: {
+    appAdminPassword: null,
+    profilingRequiresHttps: true,
     proxy: false,
     hideWorkerId: false,
     hideErrors: true,
@@ -42,10 +57,10 @@ const defaultConfig = {
   pg: {
     host: 'localhost',
     port: 5432,
-    database: '',
-    user: '',
-    password: '',
-    'application_name': '',
+    database: null,
+    user: null,
+    password: null,
+    'application_name': pkg.name,
     poolIdleTimeout: 30000,
     poolSize: 12,
   },
@@ -70,7 +85,7 @@ class Config {
 
     let localConfig = {};
     try {
-      localConfig = require('./localConfig'); // eslint-disable-line global-require
+      localConfig = require('./localConfig').default; // eslint-disable-line global-require
     }
     catch(err) { void err; }
     return new this(config, fileConfig, argsConfig, envConfig, localConfig);
@@ -78,6 +93,17 @@ class Config {
 
   constructor(...configs) {
     _.defaultsDeep(this, ...configs, defaultConfig);
+    this.sanityCheck();
+  }
+
+  sanityCheck() {
+    const v = t.validate(this, RequiredConfigType);
+    if(!v.isValid()) {
+      console.error(`${v.errors.length} errors during config validation.`);
+      _.each(v.errors, ({ message }) => console.error(message));
+      console.error('Check your configuration and https://goo.gl/MTvM8w for help.');
+      throw v.firstError();
+    }
   }
 }
 
